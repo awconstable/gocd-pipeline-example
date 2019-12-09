@@ -1,0 +1,100 @@
+format_version: 3
+pipelines:
+  example:
+    group: defaultGroup
+    label_template: ${COUNT}
+    lock_behavior: unlockWhenFinished
+    materials:
+      git:
+        git: git@github.com:awconstable/gocd-pipeline-example.git
+        shallow_clone: false
+        auto_update: true
+        branch: master
+        destination: work
+    stages:
+    - Compile:
+        fetch_materials: true
+        keep_artifacts: false
+        clean_workspace: false
+        approval:
+          type: success
+        jobs:
+          compile:
+            timeout: 0
+            artifacts:
+            - build:
+                source: work/*/target/*.jar
+                destination: ''
+            tasks:
+            - exec:
+                command: ./build.sh
+                working_directory: work/.gocd
+                run_if: passed
+            - exec:
+                command: ./tag.sh
+                working_directory: work/.gocd
+                run_if: passed
+    - Package:
+        fetch_materials: false
+        keep_artifacts: false
+        clean_workspace: false
+        approval:
+          type: success
+        jobs:
+          package_web:
+            timeout: 0
+            artifacts:
+            - build:
+                source: work/*/target/*.tar
+                destination: ''
+            tasks:
+            - exec:
+                arguments:
+                - web
+                command: ./package.sh
+                working_directory: work/.gocd
+                run_if: passed
+    - Stage:
+        fetch_materials: false
+        keep_artifacts: false
+        clean_workspace: false
+        approval:
+          type: success
+        jobs:
+          deploy_web_to_stage:
+            timeout: 0
+            tasks:
+            - exec:
+                arguments:
+                - web
+                - 8082:8080
+                command: ./deploy.sh
+                working_directory: work/.gocd
+                run_if: passed
+          refresh_db_from_live:
+            timeout: 0
+            tasks:
+              - exec:
+                  arguments:
+                  - source-db-host
+                  - dest-db-host
+                  - db-name
+                  command: ./refresh_db.sh
+                  working_directory: stash/.gocd
+                  run_if: passed
+    - Deploy:
+        fetch_materials: true
+        keep_artifacts: false
+        clean_workspace: false
+        approval:
+          type: manual
+        jobs:
+          deploy_web_to_live:
+            timeout: 0
+            tasks:
+            - exec:
+                arguments:
+                - web
+                command: ./deploy.sh
+                working_directory: stash/.gocd
+                run_if: passed
